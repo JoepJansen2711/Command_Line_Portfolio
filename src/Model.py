@@ -304,12 +304,11 @@ class PortfolioAnalytics:
     
     def simulate_portfolio(self, years: int = 15, num_simulations: int = 100000) -> dict:
         """
-        Run a Monte Carlo simulation to project future portfolio value.
+        Run a Monte Carlo simulation using Geometric Brownian Motion (GBM).
 
-        For each asset, calculates the mean and standard deviation of
-        historical daily returns, then simulates random price paths
-        forward. Results are aggregated into total portfolio value
-        over time.
+        For each asset, estimates drift (mu) and volatility (sigma) from
+        historical daily log-returns, then simulates random price paths
+        forward. Prices are guaranteed to stay positive.
 
         Args:
             years: Number of years to simulate forward. Defaults to 15.
@@ -318,33 +317,31 @@ class PortfolioAnalytics:
         Returns:
             A dict containing:
                 - 'simulations': np.ndarray of shape (num_simulations, trading_days)
-                                with total portfolio value per day per simulation.
                 - 'mean': np.ndarray of average portfolio value per day.
                 - 'percentile_5': np.ndarray of 5th percentile (worst case).
                 - 'percentile_95': np.ndarray of 95th percentile (best case).
         """
         trading_days = years * 252
+        dt = 1 / 252  # one trading day as a fraction of a year
 
-        # Collect historical daily returns for each asset
         all_simulated_values = np.zeros((num_simulations, trading_days))
 
         for asset in self.portfolio.assets:
             hist = asset.get_historical_prices(period="5y")
-            daily_returns = hist["Close"].pct_change().dropna()
 
-            mean_return = daily_returns.mean()
-            std_return = daily_returns.std()
+            # Use LOG returns instead of arithmetic returns
+            log_returns = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
 
-            # Generate random daily returns: one row per simulation, one column per day
-            random_returns = np.random.normal(mean_return, std_return,
-                                            (num_simulations, trading_days))
+            mu = log_returns.mean() / dt    # annualized drift
+            sigma = log_returns.std() / np.sqrt(dt)  # annualized volatility
 
-            # Convert returns to price paths starting from current value
-            price_paths = asset.get_current_value() * np.cumprod(1 + random_returns, axis=1)
+            # GBM formula: S(t) = S(0) * exp(cumulative sum of daily shocks)
+            Z = np.random.standard_normal((num_simulations, trading_days))
+            daily_shocks = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * Z
+            price_paths = asset.get_current_value() * np.exp(np.cumsum(daily_shocks, axis=1))
 
             all_simulated_values += price_paths
 
-        # Add cash (stays constant, no growth)
         all_simulated_values += self.portfolio.cash_balance
 
         return {
