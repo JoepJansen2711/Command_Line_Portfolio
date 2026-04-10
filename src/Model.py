@@ -4,8 +4,6 @@ import pandas as pd
 
 
 
-
-
 # ASSET
 
 class Asset:
