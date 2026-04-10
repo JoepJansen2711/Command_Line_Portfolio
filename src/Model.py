@@ -608,6 +608,9 @@ class PortfolioAnalytics:
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
 
         aligned = pd.concat(returns_list, axis=1).dropna()
+        if aligned.empty:
+            return 0.0
+        
         portfolio_returns = aligned.values @ np.array(weights)
 
         ann_return = portfolio_returns.mean() * 252
@@ -638,8 +641,10 @@ class PortfolioAnalytics:
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
 
         df = pd.concat(returns_list, axis=1).dropna()
+        if df.empty:
+            return pd.DataFrame()
+        
         df.columns = tickers
-
         return df.corr()
 
     def get_covariance_matrix(self, period: str = "1y") -> pd.DataFrame:
@@ -659,8 +664,10 @@ class PortfolioAnalytics:
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
 
         df = pd.concat(returns_list, axis=1).dropna()
+        if df.empty:
+            return pd.DataFrame()
+        
         df.columns = tickers
-
         return df.cov() * 252
 
     def get_optimal_weights(self, risk_free_rate: float = None, period: str = "1y") -> dict:
@@ -699,6 +706,9 @@ class PortfolioAnalytics:
 
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
         df = pd.concat(returns_list, axis=1).dropna()
+        if df.empty:
+            return {}
+        
         df.columns = tickers
 
         mean_returns = df.mean() * 252
@@ -780,6 +790,9 @@ class PortfolioAnalytics:
 
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
         df = pd.concat(returns_list, axis=1).dropna()
+        if df.empty:
+            return {}
+        
         df.columns = tickers
 
         mean_returns = df.mean() * 252
@@ -875,9 +888,15 @@ class PortfolioAnalytics:
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
 
         aligned = pd.concat(returns_list, axis=1).dropna()
+        if aligned.empty:
+            return {}
+        
         port_returns = pd.Series(aligned.values @ np.array(weights), index=aligned.index)
 
         common_dates = port_returns.index.intersection(bench_returns.index)
+        if common_dates.empty:
+            return {}
+        
         port_returns = port_returns.loc[common_dates]
         bench_returns = bench_returns.loc[common_dates]
 
