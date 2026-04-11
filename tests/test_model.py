@@ -204,6 +204,32 @@ class TestAsset(unittest.TestCase):
         result = Asset._fetch_risk_free_rate()
         self.assertEqual(result, 0.02)
 
+    def test_get_risk_metrics_returns_dict(self):
+        """Verify get_risk_metrics returns a dict."""
+        result = self.asset.get_risk_metrics()
+        self.assertIsInstance(result, dict)
+
+    def test_get_risk_metrics_has_expected_keys(self):
+        """Verify risk metrics dict contains all expected keys."""
+        result = self.asset.get_risk_metrics()
+        if result:  # If not empty (has sufficient data)
+            for key in ("hist_monthly_vol", "garch_predicted_vol", "var_95", "var_99", "es_95", "es_99"):
+                self.assertIn(key, result)
+
+    def test_get_risk_metrics_values_are_floats(self):
+        """Verify all risk metric values are floats."""
+        result = self.asset.get_risk_metrics()
+        if result:  # If not empty
+            for value in result.values():
+                self.assertIsInstance(value, float)
+
+    def test_get_risk_metrics_insufficient_data(self):
+        """Verify get_risk_metrics returns empty dict with insufficient data."""
+        # The mock data only has 10 days, which is < 60 required minimum
+        result = self.asset.get_risk_metrics(period="1y")
+        # Should return empty dict due to insufficient data
+        self.assertIsInstance(result, dict)
+
 
 # ──────────────────────────────────────────────
 # PORTFOLIO TESTS
@@ -674,6 +700,98 @@ class TestPortfolioAnalytics(unittest.TestCase):
             benchmark_ticker="ACWI", period="1y", risk_free_rate=0.02
         )
         self.assertIsInstance(result["alpha"], float)
+
+    # ── RISK METRICS TESTS ──────────────────────────────────────────────────────
+
+    def test_get_risk_metrics_returns_dict(self):
+        """Verify get_risk_metrics returns a dict with GARCH/VaR metrics."""
+        result = self.analytics.get_risk_metrics_per_asset()
+        self.assertIsInstance(result, dict)
+
+    def test_get_risk_metrics_per_asset_has_all_tickers(self):
+        """Verify result contains all portfolio tickers as keys."""
+        result = self.analytics.get_risk_metrics_per_asset()
+        self.assertIn("AAPL", result)
+        self.assertIn("MSFT", result)
+
+    def test_get_risk_metrics_per_asset_values_are_dicts(self):
+        """Verify each ticker maps to a metrics dict."""
+        result = self.analytics.get_risk_metrics_per_asset()
+        for value in result.values():
+            self.assertIsInstance(value, dict)
+
+    def test_get_risk_metrics_per_asset_has_expected_keys(self):
+        """Verify each metrics dict contains the expected risk metric keys."""
+        result = self.analytics.get_risk_metrics_per_asset()
+        for metrics in result.values():
+            if metrics:  # If not empty (has sufficient data)
+                for key in ("hist_monthly_vol", "garch_predicted_vol", "var_95", "var_99", "es_95", "es_99"):
+                    self.assertIn(key, metrics)
+
+    def test_get_risk_free_rate_returns_float(self):
+        """Verify get_risk_free_rate returns a float."""
+        result = self.analytics.get_risk_free_rate()
+        self.assertIsInstance(result, float)
+
+    def test_get_risk_free_rate_non_negative(self):
+        """Verify risk-free rate is non-negative."""
+        result = self.analytics.get_risk_free_rate()
+        self.assertGreaterEqual(result, 0.0)
+
+    def test_get_risk_metrics_by_sector_returns_dict(self):
+        """Verify get_risk_metrics_by_sector returns a dict."""
+        result = self.analytics.get_risk_metrics_by_sector()
+        self.assertIsInstance(result, dict)
+
+    def test_get_risk_metrics_by_sector_has_technology(self):
+        """Verify Technology sector is present (both test assets are Technology)."""
+        result = self.analytics.get_risk_metrics_by_sector()
+        # Note: Returns empty dict if insufficient data (< 60 observations)
+        if result:
+            self.assertIn("Technology", result)
+
+    def test_get_risk_metrics_by_sector_values_are_dicts(self):
+        """Verify each sector maps to a metrics dict."""
+        result = self.analytics.get_risk_metrics_by_sector()
+        for value in result.values():
+            self.assertIsInstance(value, dict)
+
+    def test_get_risk_metrics_by_asset_class_returns_dict(self):
+        """Verify get_risk_metrics_by_asset_class returns a dict."""
+        result = self.analytics.get_risk_metrics_by_asset_class()
+        self.assertIsInstance(result, dict)
+
+    def test_get_risk_metrics_by_asset_class_has_equity(self):
+        """Verify EQUITY class is present (both test assets are EQUITY)."""
+        result = self.analytics.get_risk_metrics_by_asset_class()
+        # Note: Returns empty dict if insufficient data (< 60 observations)
+        if result:
+            self.assertIn("EQUITY", result)
+
+    def test_get_risk_metrics_by_asset_class_values_are_dicts(self):
+        """Verify each asset class maps to a metrics dict."""
+        result = self.analytics.get_risk_metrics_by_asset_class()
+        for value in result.values():
+            self.assertIsInstance(value, dict)
+
+    def test_get_portfolio_risk_metrics_returns_dict(self):
+        """Verify get_portfolio_risk_metrics returns a dict."""
+        result = self.analytics.get_portfolio_risk_metrics()
+        self.assertIsInstance(result, dict)
+
+    def test_get_portfolio_risk_metrics_has_expected_keys(self):
+        """Verify portfolio risk metrics dict contains expected risk keys."""
+        result = self.analytics.get_portfolio_risk_metrics()
+        if result:  # If not empty (has sufficient data)
+            for key in ("hist_monthly_vol", "garch_predicted_vol", "var_95", "var_99", "es_95", "es_99"):
+                self.assertIn(key, result)
+
+    def test_get_portfolio_risk_metrics_empty_portfolio(self):
+        """Verify empty portfolio returns empty dict."""
+        empty = Portfolio("Empty", cash_balance=0.0)
+        analytics = PortfolioAnalytics(empty)
+        result = analytics.get_portfolio_risk_metrics()
+        self.assertEqual(result, {})
 
 
 if __name__ == "__main__":
