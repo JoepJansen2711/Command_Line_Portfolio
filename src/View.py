@@ -353,7 +353,10 @@ class View:
         initial_value: float = None,
     ) -> plt.Figure:
         """
-        Monte Carlo fan chart showing uncertainty bands.
+        Correlated GBM Monte Carlo fan chart showing uncertainty bands.
+
+        Uses Cholesky decomposition to enforce asset correlations throughout
+        the simulation horizon. Displays percentile bands and sample paths.
 
         Args:
             simulation_result: Output of PortfolioAnalytics.simulate_portfolio().
@@ -405,7 +408,7 @@ class View:
         ax.set_xlabel("Years", color=PALETTE["text"])
         ax.set_ylabel(f"Portfolio Value ({currency})", color=PALETTE["text"])
         ax.set_title(
-            f"Monte Carlo Simulation  ·  {len(sims):,} paths  ·  {years}y horizon",
+            f"Correlated GBM Monte Carlo  ·  {len(sims):,} paths  ·  {years}y horizon",
             color=PALETTE["text"], fontsize=13, fontweight="bold",
         )
         ax.yaxis.set_major_formatter(

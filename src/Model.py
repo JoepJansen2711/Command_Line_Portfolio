@@ -505,52 +505,67 @@ class PortfolioAnalytics:
 
     
     def simulate_portfolio(self, years: int = 15, num_simulations: int = 100000) -> dict:
-        """
-        Run a Monte Carlo simulation using Geometric Brownian Motion (GBM).
-
-        For each asset, estimates drift (mu) and volatility (sigma) from
-        historical daily log-returns, then simulates random price paths
-        forward. Prices are guaranteed to stay positive.
-
-        Args:
-            years: Number of years to simulate forward. Defaults to 15.
-            num_simulations: Number of random paths to generate. Defaults to 100,000.
-
-        Returns:
-            A dict containing:
-                - 'simulations': np.ndarray of shape (num_simulations, trading_days)
-                - 'mean': np.ndarray of average portfolio value per day.
-                - 'percentile_5': np.ndarray of 5th percentile (worst case).
-                - 'percentile_95': np.ndarray of 95th percentile (best case).
-        """
+        if len(self.portfolio.assets) == 0:
+            return {
+                "simulations": np.array([]),
+                "mean": np.array([]),
+                "percentile_5": np.array([]),
+                "percentile_95": np.array([]),
+            }
+    
         trading_days = years * 252
-        dt = 1 / 252  # one trading day as a fraction of a year
-
-        all_simulated_values = np.zeros((num_simulations, trading_days))
-
-        for asset in self.portfolio.assets:
-            hist = asset.get_historical_prices(period="5y")
-
-            # Use LOG returns instead of arithmetic returns
-            log_returns = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
-
-            mu = log_returns.mean() / dt    # annualized drift
-            sigma = log_returns.std() / np.sqrt(dt)  # annualized volatility
-
-            # GBM formula: S(t) = S(0) * exp(cumulative sum of daily shocks)
-            Z = np.random.standard_normal((num_simulations, trading_days))
-            daily_shocks = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * Z
-            price_paths = asset.get_current_value() * np.exp(np.cumsum(daily_shocks, axis=1))
-
-            all_simulated_values += price_paths
-
-        all_simulated_values += self.portfolio.cash_balance
-
+        dt = 1 / 252
+        n_assets = len(self.portfolio.assets)
+    
+        returns_list = []
+        mus = np.zeros(n_assets)
+        sigmas = np.zeros(n_assets)
+        S0s = np.zeros(n_assets)
+    
+        for i, asset in enumerate(self.portfolio.assets):
+            try:
+                hist = asset.get_historical_prices(period="5y")
+                log_returns = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
+    
+                mus[i] = log_returns.mean() * 252
+                sigmas[i] = log_returns.std() * np.sqrt(252)
+                S0s[i] = asset.get_current_value()
+                returns_list.append(log_returns)
+            except Exception:
+                mus[i] = 0.05
+                sigmas[i] = 0.20
+                S0s[i] = asset.get_current_value()
+                returns_list.append(pd.Series([0.0]))
+    
+        returns_df = pd.concat(returns_list, axis=1).dropna()
+        correlation_matrix = returns_df.corr().values
+    
+        try:
+            L = np.linalg.cholesky(correlation_matrix)
+        except np.linalg.LinAlgError:
+            correlation_matrix = 0.99 * correlation_matrix + 0.01 * np.eye(n_assets)
+            L = np.linalg.cholesky(correlation_matrix)
+    
+        Z_independent = np.random.standard_normal(
+            (num_simulations, n_assets, trading_days)
+        )
+        Z_correlated = np.einsum("ij,sjt->sit", L, Z_independent)
+    
+        daily_drift = ((mus - 0.5 * sigmas**2) * dt).reshape(n_assets, 1)
+        daily_vol = (sigmas * np.sqrt(dt)).reshape(n_assets, 1)
+    
+        log_increments = daily_drift + daily_vol * Z_correlated
+        log_cumulative = np.cumsum(log_increments, axis=2)
+    
+        price_paths = S0s.reshape(1, n_assets, 1) * np.exp(log_cumulative)
+    
+        portfolio_values = price_paths.sum(axis=1) + self.portfolio.cash_balance
+    
         return {
-            "simulations": all_simulated_values,
-            "mean": np.mean(all_simulated_values, axis=0),
-            "percentile_5": np.percentile(all_simulated_values, 5, axis=0),
-            "percentile_95": np.percentile(all_simulated_values, 95, axis=0),
+            "simulations": portfolio_values,
+            "mean": np.mean(portfolio_values, axis=0),
+            "percentile_5": np.percentile(portfolio_values, 5, axis=0),
+            "percentile_95": np.percentile(portfolio_values, 95, axis=0),
         }
     
 

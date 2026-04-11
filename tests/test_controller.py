@@ -162,11 +162,11 @@ class TestControllerAddAsset(unittest.TestCase):
     @patch("src.Controller.console")
     def test_add_asset_success(self, mock_console, mock_ask, mock_ask_pos_float,
                                mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
-        """Verify _add_asset creates and adds asset."""
+        """Verify _add_asset asks ticker first, then creates and adds asset."""
+        mock_ask_ne.return_value = "AAPL"  # Ticker asked first
         mock_ask_pos_int.return_value = 10
         mock_ask_pos_float.return_value = 150.0
-        mock_ask.side_effect = ["Technology", "EQUITY"]
-        mock_ask_ne.return_value = "AAPL"
+        mock_ask.side_effect = ["Technology", "EQUITY"]  # Sector and asset_class
 
         mock_asset = MagicMock()
         mock_asset.sector = "Technology"
@@ -176,6 +176,8 @@ class TestControllerAddAsset(unittest.TestCase):
 
         self.controller._add_asset()
 
+        # Asset should be created twice: once for validation, once for final
+        self.assertEqual(mock_asset_class.call_count, 2)
         self.controller.portfolio.add_asset.assert_called_once_with(mock_asset)
         self.controller.view.show_success.assert_called_once()
 
@@ -188,11 +190,8 @@ class TestControllerAddAsset(unittest.TestCase):
     @patch("src.Controller.console")
     def test_add_asset_failure(self, mock_console, mock_ask, mock_ask_pos_float,
                                mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
-        """Verify _add_asset shows error and asks to retry on invalid ticker."""
-        mock_ask_pos_int.return_value = 10
-        mock_ask_pos_float.return_value = 150.0
-        mock_ask.side_effect = ["", ""]
-        mock_ask_ne.return_value = "INVALID"
+        """Verify _add_asset validates ticker first and asks to retry on invalid."""
+        mock_ask_ne.return_value = "INVALID"  # Invalid ticker
         mock_asset_class.side_effect = Exception("Bad ticker")
         mock_confirm.return_value = False  # User declines to retry
 
@@ -210,20 +209,24 @@ class TestControllerAddAsset(unittest.TestCase):
     @patch("src.Controller.console")
     def test_add_asset_retry_succeeds(self, mock_console, mock_ask, mock_ask_pos_float,
                                       mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
-        """Verify _add_asset retries and succeeds with valid ticker after first failure."""
+        """Verify _add_asset validates ticker first, retries on failure, succeeds on retry."""
+        mock_ask_ne.side_effect = ["INVALID", "AAPL"]  # First attempt invalid, second valid
         mock_ask_pos_int.return_value = 10
         mock_ask_pos_float.return_value = 150.0
         mock_ask.side_effect = ["Technology", "EQUITY"]
-        mock_ask_ne.side_effect = ["INVALID", "AAPL"]  # First attempt invalid, second valid
         mock_confirm.return_value = True  # User wants to retry
 
-        mock_invalid_asset = MagicMock()
         mock_valid_asset = MagicMock()
         mock_valid_asset.sector = "Technology"
         mock_valid_asset.asset_class = "EQUITY"
 
-        # First call raises exception, second succeeds
-        mock_asset_class.side_effect = [Exception("Bad ticker"), mock_valid_asset]
+        # Validation: first INVALID fails, second AAPL succeeds
+        # Final: AAPL succeeds
+        mock_asset_class.side_effect = [
+            Exception("Bad ticker"),  # Validation of INVALID
+            mock_valid_asset,         # Validation of AAPL
+            mock_valid_asset,         # Final creation of AAPL
+        ]
         self.controller.portfolio.currency = "EUR"
 
         self.controller._add_asset()
@@ -234,6 +237,7 @@ class TestControllerAddAsset(unittest.TestCase):
         self.controller.view.show_success.assert_called_once()
         # Verify asset was added
         self.controller.portfolio.add_asset.assert_called_once_with(mock_valid_asset)
+
 
 
 class TestControllerRemoveAsset(unittest.TestCase):

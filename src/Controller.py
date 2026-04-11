@@ -171,6 +171,23 @@ class Controller:
     def _add_asset(self) -> None:
         console.print(Panel("[bold]Add Asset[/bold]", border_style="cyan", expand=False))
 
+        # Retry loop for ticker validation — ask FIRST before collecting other data
+        while True:
+            ticker = _ask_non_empty("Ticker symbol (e.g. AAPL)").upper()
+            _spinner(f"Fetching data for {ticker} from Yahoo Finance")
+            
+            try:
+                # Validate ticker by attempting to create Asset
+                temp_asset = Asset(ticker, 1, 1.0)  # Dummy values just for validation
+                break  # Ticker is valid, exit loop
+            except Exception as exc:
+                self.view.show_error(f"Could not fetch {ticker}: {exc}")
+                if Confirm.ask("[yellow]Try a different ticker?[/yellow]", default=True):
+                    continue
+                else:
+                    return  # User opts out of retrying
+
+        # Now collect quantity, price, and optional metadata
         quantity       = _ask_positive_int("Quantity")
         purchase_price = _ask_positive_float("Purchase price per unit")
 
@@ -178,31 +195,22 @@ class Controller:
         sector      = _ask("Sector  (leave blank → auto-detect from Yahoo)", "")
         asset_class = _ask("Asset class  (leave blank → auto-detect)", "")
 
-        # Retry loop for ticker validation
-        while True:
-            ticker = _ask_non_empty("Ticker symbol (e.g. AAPL)").upper()
-            _spinner(f"Fetching data for {ticker} from Yahoo Finance")
-            
-            try:
-                asset = Asset(
-                    ticker, quantity, purchase_price,
-                    sector      = sector      or None,
-                    asset_class = asset_class or None,
-                )
-                self.portfolio.add_asset(asset)
-                self._refresh_analytics()
-                self.view.show_success(
-                    f"Added {quantity}× {ticker}  "
-                    f"@ {self.portfolio.currency} {purchase_price:,.2f}  "
-                    f"| Sector: {asset.sector}  | Class: {asset.asset_class}"
-                )
-                break  # Exit loop on success
-            except Exception as exc:
-                self.view.show_error(f"Could not add {ticker}: {exc}")
-                if Confirm.ask("[yellow]Try a different ticker?[/yellow]", default=True):
-                    continue
-                else:
-                    return  # User opts out of retrying
+        # Create final asset with validated ticker
+        try:
+            asset = Asset(
+                ticker, quantity, purchase_price,
+                sector      = sector      or None,
+                asset_class = asset_class or None,
+            )
+            self.portfolio.add_asset(asset)
+            self._refresh_analytics()
+            self.view.show_success(
+                f"Added {quantity}× {ticker}  "
+                f"@ {self.portfolio.currency} {purchase_price:,.2f}  "
+                f"| Sector: {asset.sector}  | Class: {asset.asset_class}"
+            )
+        except Exception as exc:
+            self.view.show_error(f"Could not add {ticker}: {exc}")
 
     def _remove_asset(self) -> None:
         if not self.portfolio.assets:
@@ -463,8 +471,12 @@ class Controller:
             "[dim]  Tip: use 10,000 for a quick preview; "
             "100,000 for high-quality results (slower).[/dim]"
         )
+        console.print(
+            "[dim]  Note: simulation uses Correlated GBM with Cholesky decomposition "
+            "to respect asset correlations.[/dim]"
+        )
 
-        _spinner(f"Running Monte Carlo  —  {n_paths:,} paths  ·  {years}y")
+        _spinner(f"Running Correlated GBM  —  {n_paths:,} paths  ·  {years}y")
         try:
             result = self.analytics.simulate_portfolio(
                 years=years, num_simulations=n_paths
