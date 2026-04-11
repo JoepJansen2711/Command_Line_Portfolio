@@ -171,7 +171,6 @@ class Controller:
     def _add_asset(self) -> None:
         console.print(Panel("[bold]Add Asset[/bold]", border_style="cyan", expand=False))
 
-        ticker         = _ask_non_empty("Ticker symbol (e.g. AAPL)").upper()
         quantity       = _ask_positive_int("Quantity")
         purchase_price = _ask_positive_float("Purchase price per unit")
 
@@ -179,22 +178,31 @@ class Controller:
         sector      = _ask("Sector  (leave blank → auto-detect from Yahoo)", "")
         asset_class = _ask("Asset class  (leave blank → auto-detect)", "")
 
-        _spinner(f"Fetching data for {ticker} from Yahoo Finance")
-        try:
-            asset = Asset(
-                ticker, quantity, purchase_price,
-                sector      = sector      or None,
-                asset_class = asset_class or None,
-            )
-            self.portfolio.add_asset(asset)
-            self._refresh_analytics()
-            self.view.show_success(
-                f"Added {quantity}× {ticker}  "
-                f"@ {self.portfolio.currency} {purchase_price:,.2f}  "
-                f"| Sector: {asset.sector}  | Class: {asset.asset_class}"
-            )
-        except Exception as exc:
-            self.view.show_error(f"Could not add {ticker}: {exc}")
+        # Retry loop for ticker validation
+        while True:
+            ticker = _ask_non_empty("Ticker symbol (e.g. AAPL)").upper()
+            _spinner(f"Fetching data for {ticker} from Yahoo Finance")
+            
+            try:
+                asset = Asset(
+                    ticker, quantity, purchase_price,
+                    sector      = sector      or None,
+                    asset_class = asset_class or None,
+                )
+                self.portfolio.add_asset(asset)
+                self._refresh_analytics()
+                self.view.show_success(
+                    f"Added {quantity}× {ticker}  "
+                    f"@ {self.portfolio.currency} {purchase_price:,.2f}  "
+                    f"| Sector: {asset.sector}  | Class: {asset.asset_class}"
+                )
+                break  # Exit loop on success
+            except Exception as exc:
+                self.view.show_error(f"Could not add {ticker}: {exc}")
+                if Confirm.ask("[yellow]Try a different ticker?[/yellow]", default=True):
+                    continue
+                else:
+                    return  # User opts out of retrying
 
     def _remove_asset(self) -> None:
         if not self.portfolio.assets:

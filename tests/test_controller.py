@@ -153,6 +153,7 @@ class TestControllerAddAsset(unittest.TestCase):
         self.controller.analytics = MagicMock(spec=PortfolioAnalytics)
         self.controller.view = MagicMock()
 
+    @patch("src.Controller.Confirm.ask")
     @patch("src.Controller.Asset")
     @patch("src.Controller._ask_non_empty")
     @patch("src.Controller._ask_positive_int")
@@ -160,12 +161,12 @@ class TestControllerAddAsset(unittest.TestCase):
     @patch("src.Controller._ask")
     @patch("src.Controller.console")
     def test_add_asset_success(self, mock_console, mock_ask, mock_ask_pos_float,
-                               mock_ask_pos_int, mock_ask_ne, mock_asset_class):
+                               mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
         """Verify _add_asset creates and adds asset."""
-        mock_ask_ne.return_value = "AAPL"
         mock_ask_pos_int.return_value = 10
         mock_ask_pos_float.return_value = 150.0
         mock_ask.side_effect = ["Technology", "EQUITY"]
+        mock_ask_ne.return_value = "AAPL"
 
         mock_asset = MagicMock()
         mock_asset.sector = "Technology"
@@ -178,6 +179,7 @@ class TestControllerAddAsset(unittest.TestCase):
         self.controller.portfolio.add_asset.assert_called_once_with(mock_asset)
         self.controller.view.show_success.assert_called_once()
 
+    @patch("src.Controller.Confirm.ask")
     @patch("src.Controller.Asset")
     @patch("src.Controller._ask_non_empty")
     @patch("src.Controller._ask_positive_int")
@@ -185,17 +187,53 @@ class TestControllerAddAsset(unittest.TestCase):
     @patch("src.Controller._ask")
     @patch("src.Controller.console")
     def test_add_asset_failure(self, mock_console, mock_ask, mock_ask_pos_float,
-                               mock_ask_pos_int, mock_ask_ne, mock_asset_class):
-        """Verify _add_asset handles errors."""
-        mock_ask_ne.return_value = "INVALID"
+                               mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
+        """Verify _add_asset shows error and asks to retry on invalid ticker."""
         mock_ask_pos_int.return_value = 10
         mock_ask_pos_float.return_value = 150.0
         mock_ask.side_effect = ["", ""]
+        mock_ask_ne.return_value = "INVALID"
         mock_asset_class.side_effect = Exception("Bad ticker")
+        mock_confirm.return_value = False  # User declines to retry
 
         self.controller._add_asset()
 
         self.controller.view.show_error.assert_called_once()
+        self.controller.portfolio.add_asset.assert_not_called()
+
+    @patch("src.Controller.Confirm.ask")
+    @patch("src.Controller.Asset")
+    @patch("src.Controller._ask_non_empty")
+    @patch("src.Controller._ask_positive_int")
+    @patch("src.Controller._ask_positive_float")
+    @patch("src.Controller._ask")
+    @patch("src.Controller.console")
+    def test_add_asset_retry_succeeds(self, mock_console, mock_ask, mock_ask_pos_float,
+                                      mock_ask_pos_int, mock_ask_ne, mock_asset_class, mock_confirm):
+        """Verify _add_asset retries and succeeds with valid ticker after first failure."""
+        mock_ask_pos_int.return_value = 10
+        mock_ask_pos_float.return_value = 150.0
+        mock_ask.side_effect = ["Technology", "EQUITY"]
+        mock_ask_ne.side_effect = ["INVALID", "AAPL"]  # First attempt invalid, second valid
+        mock_confirm.return_value = True  # User wants to retry
+
+        mock_invalid_asset = MagicMock()
+        mock_valid_asset = MagicMock()
+        mock_valid_asset.sector = "Technology"
+        mock_valid_asset.asset_class = "EQUITY"
+
+        # First call raises exception, second succeeds
+        mock_asset_class.side_effect = [Exception("Bad ticker"), mock_valid_asset]
+        self.controller.portfolio.currency = "EUR"
+
+        self.controller._add_asset()
+
+        # Verify error was shown for first attempt
+        self.controller.view.show_error.assert_called_once()
+        # Verify success was shown for second attempt
+        self.controller.view.show_success.assert_called_once()
+        # Verify asset was added
+        self.controller.portfolio.add_asset.assert_called_once_with(mock_valid_asset)
 
 
 class TestControllerRemoveAsset(unittest.TestCase):
