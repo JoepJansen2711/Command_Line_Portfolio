@@ -864,6 +864,112 @@ class View:
         return fig
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # RISK METRICS  (GARCH VaR / ES)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def show_risk_metrics_table(self, data: dict, label: str = "Asset") -> Table:
+        """
+        Tabular summary of GARCH(1,1)-t risk metrics.
+
+        Args:
+            data:  Dict of {name → metrics_dict} where metrics_dict has keys:
+                   hist_monthly_vol, garch_predicted_vol, var_95, var_99,
+                   es_95, es_99  (all as fractions, e.g. 0.05 = 5 %).
+            label: Column header for the first column (e.g. 'Asset', 'Sector').
+
+        Returns:
+            The rich Table (also printed).
+        """
+        table = Table(
+            title=f"Risk Metrics  ·  1-Month Horizon  ·  by {label}",
+            box=box.ROUNDED,
+            header_style="bold cyan",
+            border_style="cyan",
+        )
+        table.add_column(label,              style="bold white",  min_width=14)
+        table.add_column("Hist Vol (mo)",    justify="right",     min_width=13)
+        table.add_column("GARCH Vol (mo)",   justify="right",     min_width=13)
+        table.add_column("VaR 95%",          justify="right",     min_width=10)
+        table.add_column("VaR 99%",          justify="right",     min_width=10)
+        table.add_column("ES 95%",           justify="right",     min_width=10)
+        table.add_column("ES 99%",           justify="right",     min_width=10)
+
+        for name, m in data.items():
+            if not m:
+                table.add_row(name, *["—"] * 6)
+                continue
+
+            def pct(v):
+                val = v if (v is not None and np.isfinite(v)) else 0.0
+                return f"{val * 100:.2f}%"
+
+            table.add_row(
+                name,
+                pct(m.get("hist_monthly_vol")),
+                pct(m.get("garch_predicted_vol")),
+                Text(pct(m.get("var_95")), style="yellow"),
+                Text(pct(m.get("var_99")), style="red"),
+                Text(pct(m.get("es_95")),  style="yellow"),
+                Text(pct(m.get("es_99")),  style="red"),
+            )
+
+        self.console.print()
+        self.console.print(table)
+        self.console.print(
+            Panel(
+                "[dim]VaR: maximum expected loss at the given confidence level.\n"
+                "ES (CVaR): average loss beyond the VaR threshold.\n"
+                "Volatility scaled to 22 trading days via √t rule.[/dim]",
+                border_style="dim",
+                expand=False,
+            )
+        )
+        return table
+
+    def plot_risk_metrics_bars(self, data: dict, title: str = "Risk Metrics") -> plt.Figure:
+        """
+        Grouped horizontal bar chart: VaR 95/99 and ES 95/99 per group.
+
+        Args:
+            data:  Same structure as show_risk_metrics_table.
+            title: Figure title.
+
+        Returns:
+            matplotlib Figure.
+        """
+        names  = [n for n, m in data.items() if m]
+        var_95 = [data[n].get("var_95", 0) * 100 for n in names]
+        var_99 = [data[n].get("var_99", 0) * 100 for n in names]
+        es_95  = [data[n].get("es_95",  0) * 100 for n in names]
+        es_99  = [data[n].get("es_99",  0) * 100 for n in names]
+
+        n      = len(names)
+        y      = np.arange(n)
+        height = 0.18
+
+        fig, ax = plt.subplots(figsize=(11, max(4, n * 1.2 + 1.5)))
+        _style(fig, ax)
+
+        ax.barh(y + 1.5 * height, var_95, height, label="VaR 95%",
+                color=PALETTE["primary"],  alpha=0.85)
+        ax.barh(y + 0.5 * height, var_99, height, label="VaR 99%",
+                color=PALETTE["negative"], alpha=0.85)
+        ax.barh(y - 0.5 * height, es_95,  height, label="ES  95%",
+                color=PALETTE["accent"],   alpha=0.85)
+        ax.barh(y - 1.5 * height, es_99,  height, label="ES  99%",
+                color="#C0392B",            alpha=0.85)
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(names, color=PALETTE["text"])
+        ax.set_xlabel("1-Month Loss (%)", color=PALETTE["text"])
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.1f}%"))
+        ax.set_title(title, color=PALETTE["text"], fontsize=13, fontweight="bold")
+        ax.legend(framealpha=0.1, labelcolor=PALETTE["text"])
+        ax.axvline(0, color=PALETTE["neutral"], linewidth=0.8)
+        fig.tight_layout()
+        return fig
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # CLI HELPERS
     # ═══════════════════════════════════════════════════════════════════════════
 

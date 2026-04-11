@@ -195,6 +195,97 @@ class Asset:
         return 0.02
 
 
+    def get_risk_metrics(self, period: str = "1y") -> dict:
+        """
+        Compute risk metrics using GARCH(1,1) with Student-t innovations.
+
+        Fits a GARCH(1,1)-t model to daily returns and produces a 1-month
+        (21 trading days) ahead forecast of volatility, VaR, and Expected
+        Shortfall using the square-root-of-time scaling rule.
+
+        Args:
+            period: Historical data window (e.g. '1y', '2y').
+
+        Returns:
+            A dict containing:
+                - 'hist_monthly_vol':    historical avg monthly volatility (%)
+                - 'garch_predicted_vol': GARCH 1-month ahead volatility (%)
+                - 'var_95':  1-month 95% VaR as a fraction (positive = loss)
+                - 'var_99':  1-month 99% VaR as a fraction (positive = loss)
+                - 'es_95':   1-month 95% Expected Shortfall (positive = loss)
+                - 'es_99':   1-month 99% Expected Shortfall (positive = loss)
+            Returns {} if fewer than 60 observations.
+        """
+        from scipy.stats import t as t_dist
+
+        returns = self.get_daily_returns(period=period)
+        if len(returns) < 60:
+            return {}
+
+        h = 22  # trading days per month
+
+        # Historical monthly volatility (scale daily std to monthly)
+        hist_monthly_vol = returns.std() * np.sqrt(h)
+        mu_daily_hist = returns.mean()
+
+        try:
+            from arch import arch_model
+            # Scale to % for numerical stability in ARCH fitting
+            am  = arch_model(returns * 100, mean="Constant", vol="GARCH",
+                              p=1, q=1, dist="t")
+            res = am.fit(disp="off", show_warning=False)
+
+            # 1-step ahead conditional variance (in %^2 units)
+            fc          = res.forecast(horizon=1)
+            var_1day_pct = fc.variance.iloc[-1, 0]
+            sigma_1day   = np.sqrt(var_1day_pct) / 100          # back to decimal
+            sigma_monthly = sigma_1day * np.sqrt(h)
+
+            mu_daily  = res.params.get("mu", mu_daily_hist * 100) / 100
+            mu_monthly = mu_daily * h
+
+            nu = float(res.params.get("nu", 10.0))
+            nu = max(nu, 2.01)   # enforce finite variance (nu > 2)
+
+            # Quantiles of t(nu)
+            z_05 = t_dist.ppf(0.05, df=nu)   # ~-1.65 for nu→∞
+            z_01 = t_dist.ppf(0.01, df=nu)   # ~-2.33 for nu→∞
+
+            # VaR (loss convention: positive = loss)
+            var_95 = -(mu_monthly + sigma_monthly * z_05)
+            var_99 = -(mu_monthly + sigma_monthly * z_01)
+
+            # Expected Shortfall for Student-t:
+            # ES = -(mu + sigma * E[Z | Z < z_alpha])
+            # E[Z | Z < z_alpha] = -(nu + z^2)/(nu-1) * pdf(z)/alpha
+            def _es(z_alpha: float, alpha: float) -> float:
+                cond_exp = -(nu + z_alpha**2) / (nu - 1) * t_dist.pdf(z_alpha, df=nu) / alpha
+                return -(mu_monthly + sigma_monthly * cond_exp)
+
+            es_95 = _es(z_05, 0.05)
+            es_99 = _es(z_01, 0.01)
+
+        except Exception:
+            # Fallback: parametric normal using historical vol
+            sigma_monthly  = hist_monthly_vol
+            mu_monthly     = mu_daily_hist * h
+            # Normal quantile approximations
+            var_95 = -(mu_monthly - 1.6449 * sigma_monthly)
+            var_99 = -(mu_monthly - 2.3263 * sigma_monthly)
+            pdf_95 = np.exp(-0.5 * 1.6449**2) / np.sqrt(2 * np.pi)
+            pdf_99 = np.exp(-0.5 * 2.3263**2) / np.sqrt(2 * np.pi)
+            es_95  = -(mu_monthly - sigma_monthly * pdf_95 / 0.05)
+            es_99  = -(mu_monthly - sigma_monthly * pdf_99 / 0.01)
+
+        return {
+            "hist_monthly_vol":    hist_monthly_vol,
+            "garch_predicted_vol": sigma_monthly,
+            "var_95":  var_95,
+            "var_99":  var_99,
+            "es_95":   es_95,
+            "es_99":   es_99,
+        }
+
     def __repr__(self) -> str:
         """Return a readable string representation of the Asset."""
         return (f"Asset(ticker='{self.ticker}', sector='{self.sector}', "
@@ -925,6 +1016,173 @@ class PortfolioAnalytics:
             },
             "alpha": port_ann_ret - bench_ann_ret,
             "tracking_error": tracking_error,
+        }
+
+    # ── RISK METRICS (GARCH VaR / ES) ──────────────────────────────────────────
+
+    def get_risk_metrics_per_asset(self, period: str = "1y") -> dict:
+        """
+        Compute GARCH(1,1)-t risk metrics for each asset individually.
+
+        Args:
+            period: Historical data window.
+
+        Returns:
+            Dict mapping ticker → metrics dict (see Asset.get_risk_metrics).
+        """
+        return {
+            asset.ticker: asset.get_risk_metrics(period=period)
+            for asset in self.portfolio.assets
+        }
+
+    def get_risk_metrics_by_sector(self, period: str = "1y") -> dict:
+        """
+        Value-weighted average risk metrics aggregated by sector.
+
+        Args:
+            period: Historical data window.
+
+        Returns:
+            Dict mapping sector name → averaged metrics dict.
+        """
+        return self._aggregate_risk_metrics(
+            group_key=lambda a: a.sector, period=period
+        )
+
+    def get_risk_metrics_by_asset_class(self, period: str = "1y") -> dict:
+        """
+        Value-weighted average risk metrics aggregated by asset class.
+
+        Args:
+            period: Historical data window.
+
+        Returns:
+            Dict mapping asset class name → averaged metrics dict.
+        """
+        return self._aggregate_risk_metrics(
+            group_key=lambda a: a.asset_class, period=period
+        )
+
+    def get_portfolio_risk_metrics(self, period: str = "1y") -> dict:
+        """
+        Risk metrics for the portfolio as a whole.
+
+        Computes weighted portfolio returns, then runs GARCH(1,1)-t on
+        the combined return series so diversification is accounted for.
+
+        Args:
+            period: Historical data window.
+
+        Returns:
+            Metrics dict (same structure as Asset.get_risk_metrics),
+            or {} if data is insufficient.
+        """
+        total_value = sum(a.get_current_value() for a in self.portfolio.assets)
+        if total_value == 0:
+            return {}
+
+        weights      = [a.get_current_value() / total_value for a in self.portfolio.assets]
+        returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
+
+        aligned = pd.concat(returns_list, axis=1).dropna()
+        if aligned.empty:
+            return {}
+
+        port_returns = pd.Series(
+            aligned.values @ np.array(weights), index=aligned.index
+        )
+
+        # Temporarily wrap in a dummy Asset-like object is unnecessary —
+        # call the GARCH logic directly via a helper.
+        return self._garch_metrics_from_series(port_returns)
+
+    # ── private helpers ─────────────────────────────────────────────────────────
+
+    def _aggregate_risk_metrics(self, group_key, period: str) -> dict:
+        """Value-weight individual risk metrics into groups defined by group_key."""
+        group_values: dict  = {}
+        group_metrics: dict = {}
+
+        for asset in self.portfolio.assets:
+            key    = group_key(asset)
+            value  = asset.get_current_value()
+            metrics = asset.get_risk_metrics(period=period)
+            if not metrics:
+                continue
+
+            group_values[key]  = group_values.get(key, 0.0) + value
+            if key not in group_metrics:
+                group_metrics[key] = {k: 0.0 for k in metrics}
+            for k, v in metrics.items():
+                group_metrics[key][k] += v * value
+
+        # Normalise by total group value
+        result = {}
+        for key, total in group_values.items():
+            if total > 0:
+                result[key] = {k: v / total for k, v in group_metrics[key].items()}
+
+        return result
+
+    @staticmethod
+    def _garch_metrics_from_series(returns: pd.Series) -> dict:
+        """Run GARCH(1,1)-t on a pre-built return series and return metrics."""
+        from scipy.stats import t as t_dist
+
+        if len(returns) < 60:
+            return {}
+
+        h = 21
+        hist_monthly_vol = returns.std() * np.sqrt(h)
+        mu_daily_hist    = returns.mean()
+
+        try:
+            from arch import arch_model
+            am  = arch_model(returns * 100, mean="Constant", vol="GARCH",
+                              p=1, q=1, dist="t")
+            res = am.fit(disp="off", show_warning=False)
+
+            fc            = res.forecast(horizon=1)
+            sigma_1day    = np.sqrt(fc.variance.iloc[-1, 0]) / 100
+            sigma_monthly = sigma_1day * np.sqrt(h)
+
+            mu_daily  = res.params.get("mu", mu_daily_hist * 100) / 100
+            mu_monthly = mu_daily * h
+
+            nu = max(float(res.params.get("nu", 10.0)), 2.01)
+
+            z_05 = t_dist.ppf(0.05, df=nu)
+            z_01 = t_dist.ppf(0.01, df=nu)
+
+            var_95 = -(mu_monthly + sigma_monthly * z_05)
+            var_99 = -(mu_monthly + sigma_monthly * z_01)
+
+            def _es(z_alpha, alpha):
+                cond_exp = -(nu + z_alpha**2) / (nu - 1) * t_dist.pdf(z_alpha, df=nu) / alpha
+                return -(mu_monthly + sigma_monthly * cond_exp)
+
+            es_95 = _es(z_05, 0.05)
+            es_99 = _es(z_01, 0.01)
+
+        except Exception:
+            # Fallback: parametric normal using historical vol (arch not installed or fit failed)
+            # Fallback: parametric normal using historical vol (arch not installed or fit failed)
+            sigma_monthly = hist_monthly_vol
+            mu_monthly    = mu_daily_hist * h
+            var_95 = -(mu_monthly - 1.6449 * sigma_monthly)
+            var_99 = -(mu_monthly - 2.3263 * sigma_monthly)
+            pdf_95 = np.exp(-0.5 * 1.6449**2) / np.sqrt(2 * np.pi)
+            pdf_99 = np.exp(-0.5 * 2.3263**2) / np.sqrt(2 * np.pi)
+            es_95  = -(mu_monthly - sigma_monthly * pdf_95 / 0.05)
+            es_99  = -(mu_monthly - sigma_monthly * pdf_99 / 0.01)
+
+        return {
+            "hist_monthly_vol":    hist_monthly_vol,
+            "garch_predicted_vol": sigma_monthly,
+            "var_95":  var_95,
+            "var_99":  var_99,
+            "es_95":   es_95,
+            "es_99":   es_99,
         }
 
 

@@ -149,6 +149,7 @@ class Controller:
             ("10", "Monte Carlo simulation"),
             ("11", "Benchmark comparison"),
             ("12", "Manage cash"),
+            ("13", "Risk metrics  (VaR / ES)"),
             (" 0", "Exit"),
         ]
 
@@ -509,6 +510,53 @@ class Controller:
         except Exception as exc:
             self.view.show_error(f"Benchmark comparison failed: {exc}")
 
+    def _risk_metrics(self) -> None:
+        if not self.portfolio.assets:
+            self.view.show_info("Portfolio is empty.")
+            return
+
+        console.print("\n[cyan]View Risk Metrics by:[/cyan]")
+        mode = _pick("Choose", ["Per asset", "By sector", "By asset class",
+                                "Portfolio (overall)"])
+
+        console.print("\n[cyan]Period:[/cyan]")
+        period = _pick("Choose", self.PERIODS)
+
+        _spinner("Fitting GARCH(1,1) models — this may take a moment")
+
+        try:
+            if mode == "Per asset":
+                data  = self.analytics.get_risk_metrics_per_asset(period=period)
+                label = "Asset"
+            elif mode == "By sector":
+                data  = self.analytics.get_risk_metrics_by_sector(period=period)
+                label = "Sector"
+            elif mode == "By asset class":
+                data  = self.analytics.get_risk_metrics_by_asset_class(period=period)
+                label = "Asset class"
+            else:
+                metrics = self.analytics.get_portfolio_risk_metrics(period=period)
+                data    = {"Portfolio": metrics}
+                label   = "Portfolio"
+
+            if not data or all(not m for m in data.values()):
+                self.view.show_error(
+                    "Not enough data to compute risk metrics. "
+                    "Try a longer period (e.g. 1y or 2y)."
+                )
+                return
+
+            self.view.show_risk_metrics_table(data, label=label)
+
+            if Confirm.ask("[cyan]Show bar chart?[/cyan]", default=True):
+                fig = self.view.plot_risk_metrics_bars(
+                    data, title=f"Risk Metrics — {label}"
+                )
+                self.view.show_figure(fig)
+
+        except Exception as exc:
+            self.view.show_error(f"Risk metrics failed: {exc}")
+
     def _manage_cash(self) -> None:
         cur = self.portfolio.cash_balance
         c   = self.portfolio.currency
@@ -562,6 +610,7 @@ class Controller:
             "10": self._monte_carlo,
             "11": self._benchmark_comparison,
             "12": self._manage_cash,
+            "13": self._risk_metrics,
         }
 
         while True:
