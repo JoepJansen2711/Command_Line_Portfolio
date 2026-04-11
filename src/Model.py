@@ -108,6 +108,10 @@ class Asset:
             A pandas Series of daily returns, indexed by date.
         """
         hist = self.get_historical_prices(period=period)
+        # Convert tz-aware index to tz-naive date-only so assets align on concat
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_convert(None)
+        hist.index = pd.to_datetime(hist.index.date)
         return hist["Close"].pct_change().dropna()
 
 
@@ -167,29 +171,7 @@ class Asset:
         return (ann_return - risk_free_rate) / ann_vol
 
 
-    def get_esg_score(self) -> dict:
-        """
-        Fetch ESG (Environmental, Social, Governance) scores from Yahoo Finance.
 
-        Returns:
-            A dict with keys 'totalEsg', 'environmentScore', 'socialScore',
-            'governanceScore'. Values are floats or 'N/A' if unavailable.
-        """
-        try:
-            info = self._yf_ticker.info
-            return {
-                "totalEsg": info.get("totalEsg", "N/A"),
-                "environmentScore": info.get("environmentScore", "N/A"),
-                "socialScore": info.get("socialScore", "N/A"),
-                "governanceScore": info.get("governanceScore", "N/A"),
-            }
-        except Exception:
-            return {
-                "totalEsg": "N/A",
-                "environmentScore": "N/A",
-                "socialScore": "N/A",
-                "governanceScore": "N/A",
-            }
 
 
     @staticmethod
@@ -705,16 +687,21 @@ class PortfolioAnalytics:
             return {}
 
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
-        df = pd.concat(returns_list, axis=1).dropna()
+        df = pd.concat(returns_list, axis=1)
         if df.empty:
             return {}
-        
+        df = df.dropna()
+        if df.empty:
+            return {}
+
         df.columns = tickers
 
         mean_returns = df.mean() * 252
         cov_matrix = df.cov() * 252
 
         total_value = sum(a.get_current_value() for a in self.portfolio.assets)
+        if total_value == 0:
+            return {}
         current_weights = np.array([a.get_current_value() / total_value for a in self.portfolio.assets])
 
         def neg_sharpe(weights):
@@ -789,7 +776,10 @@ class PortfolioAnalytics:
             return {}
 
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
-        df = pd.concat(returns_list, axis=1).dropna()
+        df = pd.concat(returns_list, axis=1)
+        if df.empty:
+            return {}
+        df = df.dropna()
         if df.empty:
             return {}
         
@@ -873,6 +863,10 @@ class PortfolioAnalytics:
             bench = yf.Ticker(benchmark_ticker)
             bench_hist = bench.history(period=period)
             bench_returns = bench_hist["Close"].pct_change().dropna()
+            # Normalize benchmark index to tz-naive date-only
+            if bench_returns.index.tz is not None:
+                bench_returns.index = bench_returns.index.tz_convert(None)
+            bench_returns.index = pd.to_datetime(bench_returns.index.date)
         except Exception:
             if benchmark_ticker != "IUSQ":
                 return self.get_benchmark_comparison(
@@ -887,12 +881,15 @@ class PortfolioAnalytics:
         weights = [a.get_current_value() / total_value for a in self.portfolio.assets]
         returns_list = [a.get_daily_returns(period=period) for a in self.portfolio.assets]
 
-        aligned = pd.concat(returns_list, axis=1).dropna()
+        aligned = pd.concat(returns_list, axis=1)
         if aligned.empty:
             return {}
-        
-        port_returns = pd.Series(aligned.values @ np.array(weights), index=aligned.index)
+        aligned = aligned.dropna()
+        if aligned.empty:
+            return {}
 
+        port_returns = pd.Series(aligned.values @ np.array(weights), index=aligned.index)
+        
         common_dates = port_returns.index.intersection(bench_returns.index)
         if common_dates.empty:
             return {}
@@ -930,15 +927,7 @@ class PortfolioAnalytics:
             "tracking_error": tracking_error,
         }
 
-    def get_esg_scores(self) -> dict:
-        """
-        Collect ESG scores for all assets in the portfolio.
 
-        Returns:
-            A dict mapping ticker symbols to their ESG score dicts.
-            Example: {'AAPL': {'totalEsg': 16.7, 'environmentScore': 3.4, ...}, ...}
-        """
-        return {asset.ticker: asset.get_esg_score() for asset in self.portfolio.assets}
 
 
 

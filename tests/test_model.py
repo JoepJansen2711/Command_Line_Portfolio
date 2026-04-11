@@ -186,23 +186,6 @@ class TestAsset(unittest.TestCase):
         expected = (ann_ret - rfr) / ann_vol
         self.assertAlmostEqual(self.asset.get_sharpe_ratio(risk_free_rate=rfr), expected)
 
-    def test_get_esg_score_returns_dict(self):
-        """Verify get_esg_score returns a dict."""
-        result = self.asset.get_esg_score()
-        self.assertIsInstance(result, dict)
-
-    def test_get_esg_score_has_expected_keys(self):
-        """Verify ESG dict contains all four expected keys."""
-        result = self.asset.get_esg_score()
-        for key in ("totalEsg", "environmentScore", "socialScore", "governanceScore"):
-            self.assertIn(key, result)
-
-    def test_get_esg_score_returns_na_when_missing(self):
-        """Verify ESG scores default to 'N/A' when Yahoo Finance doesn't provide them."""
-        result = self.asset.get_esg_score()
-        # create_mock_ticker does not include ESG fields, so all should be N/A
-        self.assertEqual(result["totalEsg"], "N/A")
-
     @patch("Model.yf.Ticker")
     def test_get_risk_free_rate_returns_float(self, mock_yf_ticker):
         """Verify _fetch_risk_free_rate returns a float parsed from ^IRX history."""
@@ -691,23 +674,6 @@ class TestPortfolioAnalytics(unittest.TestCase):
             benchmark_ticker="ACWI", period="1y", risk_free_rate=0.02
         )
         self.assertIsInstance(result["alpha"], float)
-
-    def test_get_esg_scores_returns_dict(self):
-        """Verify get_esg_scores returns a dict."""
-        result = self.analytics.get_esg_scores()
-        self.assertIsInstance(result, dict)
-
-    def test_get_esg_scores_has_all_tickers(self):
-        """Verify each portfolio ticker is a key in the ESG scores dict."""
-        result = self.analytics.get_esg_scores()
-        self.assertIn("AAPL", result)
-        self.assertIn("MSFT", result)
-
-    def test_get_esg_scores_values_are_dicts(self):
-        """Verify each ticker maps to a dict of ESG scores."""
-        result = self.analytics.get_esg_scores()
-        for value in result.values():
-            self.assertIsInstance(value, dict)
 
 
 if __name__ == "__main__":

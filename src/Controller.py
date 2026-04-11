@@ -148,8 +148,7 @@ class Controller:
             (" 9", "Efficient frontier"),
             ("10", "Monte Carlo simulation"),
             ("11", "Benchmark comparison"),
-            ("12", "ESG scores"),
-            ("13", "Manage cash"),
+            ("12", "Manage cash"),
             (" 0", "Exit"),
         ]
 
@@ -510,22 +509,6 @@ class Controller:
         except Exception as exc:
             self.view.show_error(f"Benchmark comparison failed: {exc}")
 
-    def _esg_scores(self) -> None:
-        if not self.portfolio.assets:
-            self.view.show_info("Portfolio is empty.")
-            return
-
-        _spinner("Fetching ESG scores from Yahoo Finance")
-        try:
-            esg = self.analytics.get_esg_scores()
-            self.view.show_esg_table(esg)
-
-            if Confirm.ask("[cyan]Show ESG bar chart?[/cyan]", default=True):
-                fig = self.view.plot_esg_scores(esg)
-                self.view.show_figure(fig)
-        except Exception as exc:
-            self.view.show_error(f"Could not fetch ESG data: {exc}")
-
     def _manage_cash(self) -> None:
         cur = self.portfolio.cash_balance
         c   = self.portfolio.currency
@@ -578,8 +561,7 @@ class Controller:
             "9":  self._efficient_frontier,
             "10": self._monte_carlo,
             "11": self._benchmark_comparison,
-            "12": self._esg_scores,
-            "13": self._manage_cash,
+            "12": self._manage_cash,
         }
 
         while True:

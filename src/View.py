@@ -377,11 +377,6 @@ class View:
         fig, ax = plt.subplots(figsize=(12, 6))
         _style(fig, ax)
 
-        # Faint individual paths
-        step = max(1, len(sims) // 80)
-        for path in sims[::step]:
-            ax.plot(x, path, color=PALETTE["primary"], alpha=0.03, linewidth=0.4)
-
         ax.fill_between(x, p5, p95, alpha=0.12, color=PALETTE["primary"],
                         label="5th – 95th percentile")
         ax.fill_between(x, p25, p75, alpha=0.22, color=PALETTE["primary"],
@@ -393,9 +388,19 @@ class View:
         ax.plot(x, p5,   color=PALETTE["negative"], linewidth=1.0,
                 linestyle="--", alpha=0.7, label="5th pct.")
 
+        # Faint individual paths drawn last so ylim is already established
+        step = max(1, len(sims) // 80)
+        for path in sims[::step]:
+            ax.plot(x, path, color=PALETTE["primary"], alpha=0.03, linewidth=0.4)
+
         if initial_value is not None:
             ax.axhline(initial_value, color=PALETTE["neutral"], linewidth=1.0,
                        linestyle=":", alpha=0.6, label="Initial value")
+
+        # Clamp y-axis to the p5–p95 range so outlier paths don't blow the scale
+        y_min = max(0, min(p5) * 0.9)
+        y_max = max(p95) * 1.1
+        ax.set_ylim(y_min, y_max)
 
         ax.set_xlabel("Years", color=PALETTE["text"])
         ax.set_ylabel(f"Portfolio Value ({currency})", color=PALETTE["text"])
@@ -454,7 +459,9 @@ class View:
         table.add_column("",       min_width=22)
         table.add_column("Rating", min_width=14)
 
-        for name, s in sorted(sharpe_data.items(), key=lambda x: -x[1]):
+        safe_items = [(n, v if (v is not None and np.isfinite(v)) else 0.0)
+                      for n, v in sharpe_data.items()]
+        for name, s in sorted(safe_items, key=lambda x: -x[1]):
             clamped = max(0.0, min(s, 4.0))
             filled  = int(clamped / 4.0 * 20)
             color   = "green" if s >= 1 else ("yellow" if s >= 0 else "red")
@@ -482,7 +489,8 @@ class View:
             matplotlib Figure.
         """
         names  = list(sharpe_data.keys())
-        values = list(sharpe_data.values())
+        values = [v if (v is not None and np.isfinite(v)) else 0.0
+                  for v in sharpe_data.values()]
         colors = [
             PALETTE["positive"] if v >= 1 else
             (PALETTE["accent"]  if v >= 0 else PALETTE["negative"])
@@ -852,104 +860,6 @@ class View:
             mticker.FuncFormatter(lambda v, _: f"{v:+.1f}%")
         )
         ax.legend(framealpha=0.1, labelcolor=PALETTE["text"])
-        fig.tight_layout()
-        return fig
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # ESG SCORES
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    def show_esg_table(self, esg_data: dict) -> Table:
-        """
-        ESG score table per asset.
-
-        Args:
-            esg_data: Output of PortfolioAnalytics.get_esg_scores().
-                      dict mapping ticker -> {totalEsg, environmentScore,
-                      socialScore, governanceScore}.
-
-        Returns:
-            The rich Table object (also printed).
-        """
-        def _fmt(v) -> Text:
-            if v in (None, "N/A"):
-                return Text("N/A", style="dim")
-            return Text(f"{v:.1f}")
-
-        table = Table(
-            title="ESG Scores per Asset",
-            box=box.ROUNDED,
-            header_style="bold cyan",
-            border_style="cyan",
-            caption="Source: Yahoo Finance  ·  Lower score = lower ESG risk",
-        )
-        table.add_column("Ticker",      style="bold white", min_width=10)
-        table.add_column("Total ESG",   justify="right",    min_width=12)
-        table.add_column("Environment", justify="right",    min_width=13)
-        table.add_column("Social",      justify="right",    min_width=10)
-        table.add_column("Governance",  justify="right",    min_width=12)
-
-        for ticker, scores in esg_data.items():
-            table.add_row(
-                ticker,
-                _fmt(scores.get("totalEsg")),
-                _fmt(scores.get("environmentScore")),
-                _fmt(scores.get("socialScore")),
-                _fmt(scores.get("governanceScore")),
-            )
-
-        self.console.print(table)
-        return table
-
-    def plot_esg_scores(self, esg_data: dict) -> plt.Figure:
-        """
-        Grouped bar chart of ESG sub-scores per asset (inverted: lower = better).
-
-        Args:
-            esg_data: Output of PortfolioAnalytics.get_esg_scores().
-
-        Returns:
-            matplotlib Figure.
-        """
-        tickers, env_vals, soc_vals, gov_vals = [], [], [], []
-
-        for ticker, scores in esg_data.items():
-            e = scores.get("environmentScore")
-            s = scores.get("socialScore")
-            g = scores.get("governanceScore")
-            if any(v not in (None, "N/A") for v in [e, s, g]):
-                tickers.append(ticker)
-                env_vals.append(e if e not in (None, "N/A") else 0)
-                soc_vals.append(s if s not in (None, "N/A") else 0)
-                gov_vals.append(g if g not in (None, "N/A") else 0)
-
-        if not tickers:
-            fig, ax = plt.subplots(figsize=(6, 4))
-            _style(fig, ax)
-            ax.text(0.5, 0.5, "No ESG data available for these assets",
-                    ha="center", va="center", transform=ax.transAxes,
-                    color=PALETTE["text"], fontsize=11)
-            return fig
-
-        x     = np.arange(len(tickers))
-        width = 0.25
-        fig, ax = plt.subplots(figsize=(max(6, len(tickers) * 1.5), 5))
-        _style(fig, ax)
-
-        ax.bar(x - width, env_vals, width, label="Environment",
-               color="#2ECC71", alpha=0.85, edgecolor=PALETTE["bg"])
-        ax.bar(x,          soc_vals, width, label="Social",
-               color="#3498DB", alpha=0.85, edgecolor=PALETTE["bg"])
-        ax.bar(x + width,  gov_vals, width, label="Governance",
-               color="#9B59B6", alpha=0.85, edgecolor=PALETTE["bg"])
-
-        ax.set_xticks(x)
-        ax.set_xticklabels(tickers)
-        ax.set_ylabel("ESG Score", color=PALETTE["text"])
-        ax.set_title("ESG Sub-scores per Asset  ·  Lower = Better ESG Risk",
-                     color=PALETTE["text"], fontsize=13, fontweight="bold")
-        ax.legend(framealpha=0, labelcolor=PALETTE["text"])
-        ax.invert_yaxis()
         fig.tight_layout()
         return fig
 
