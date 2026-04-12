@@ -69,22 +69,57 @@ h1, h2, h3 { color: #4C9BE8 !important; }
     border-radius: 8px;
 }
 
-/* Select / input */
+/* Select / input backgrounds */
 [data-baseweb="select"] > div  { background: #1A1D2E !important; border-color: #252839 !important; }
-[data-baseweb="select"] span   { color: #DCE0F0 !important; }
-[data-baseweb="select"] div[role="button"] { color: #DCE0F0 !important; }
 [data-baseweb="input"]  > div  { background: #1A1D2E !important; border-color: #252839 !important; }
 input, textarea { color: #DCE0F0 !important; background: #1A1D2E !important; }
+
+/* All text inside selects/inputs → white */
+[data-baseweb="select"] * { color: #DCE0F0 !important; }
+[data-baseweb="select"] div[role="button"] { color: #DCE0F0 !important; }
+[data-baseweb="select"] [data-testid="stSelectbox"] { color: #DCE0F0 !important; }
+
+/* Placeholder text inside selects */
+[data-baseweb="select"] [aria-selected] { color: #DCE0F0 !important; }
+[data-baseweb="select"] input::placeholder { color: #8B8FA8 !important; }
+
+/* Dropdown option list */
 [role="option"] { color: #DCE0F0 !important; background: #1A1D2E !important; }
-label { color: #DCE0F0 !important; }
+[role="listbox"] { background: #1A1D2E !important; }
+
+/* All widget labels (selectbox, text_input, number_input, multiselect, radio…) */
+label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p,
+.stRadio label, .stCheckbox label,
+[data-testid="stSelectbox"] label,
+[data-testid="stMultiSelect"] label { color: #DCE0F0 !important; }
+
+/* Caption text (sidebar subtitle, table captions) */
+[data-testid="stCaptionContainer"] p,
+.stCaption, small, caption { color: #DCE0F0 !important; }
 
 /* Expander headers */
 [data-testid="stExpander"] details > summary { color: #DCE0F0 !important; }
 [data-testid="stExpander"] details > summary:hover { background: rgba(76, 155, 232, 0.1); }
+[data-testid="stExpander"] details > summary span { color: #DCE0F0 !important; }
 
-/* Multiselect tags/chips */
-[data-baseweb="tag"] { background: #4C9BE8 !important; color: #0F1117 !important; }
-[data-baseweb="tag"] span { color: #0F1117 !important; overflow: visible !important; white-space: nowrap !important; }
+/* Multiselect tags/chips — fix clipping on first chip */
+[data-baseweb="tag"] {
+    background: #4C9BE8 !important;
+    color: #0F1117 !important;
+    max-width: none !important;
+    overflow: visible !important;
+}
+[data-baseweb="tag"] span {
+    color: #0F1117 !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    max-width: none !important;
+    text-overflow: unset !important;
+}
+[data-baseweb="tag"] > div {
+    overflow: visible !important;
+    max-width: none !important;
+}
 
 /* Buttons */
 [data-testid="stFormSubmitButton"] button,
