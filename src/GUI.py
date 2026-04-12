@@ -71,8 +71,11 @@ h1, h2, h3 { color: #4C9BE8 !important; }
 
 /* Select / input */
 [data-baseweb="select"] > div  { background: #1A1D2E !important; border-color: #252839 !important; }
+[data-baseweb="select"] span   { color: #DCE0F0 !important; }
 [data-baseweb="input"]  > div  { background: #1A1D2E !important; border-color: #252839 !important; }
-input, textarea { color: #DCE0F0 !important; }
+input, textarea { color: #DCE0F0 !important; background: #1A1D2E !important; }
+[role="option"] { color: #DCE0F0 !important; background: #1A1D2E !important; }
+label { color: #DCE0F0 !important; }
 
 /* Buttons */
 [data-testid="stFormSubmitButton"] button,
@@ -276,12 +279,12 @@ with st.spinner("Fetching live prices…"):
                 "Sector":        a.sector,
                 "Class":         a.asset_class,
                 "Qty":           a.quantity,
-                "Buy Price":     round(a.purchase_price, 2),
-                "Current Price": round(cp, 2),
-                "Invested":      round(tv, 2),
-                "Value":         round(cv, 2),
-                "P&L":           round(pnl, 2),
-                "P&L %":         round(pct, 2),
+                "Buy Price": round(a.purchase_price, 3),
+                "Current Price": round(cp, 3),
+                "Invested":      round(tv, 3),
+                "Value":         round(cv, 3),
+                "P&L":           round(pnl, 3),
+                "P&L %":         round(pct, 3),
             })
         except Exception:
             pass
