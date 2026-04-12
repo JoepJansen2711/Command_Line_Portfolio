@@ -563,13 +563,13 @@ class View:
                            color=PALETTE["text"], fontsize=9)
         ax.set_yticklabels(corr_matrix.index, color=PALETTE["text"], fontsize=9)
 
+        ax.grid(False)
         fs = 9 if n <= 8 else 7
         for i in range(n):
             for j in range(n):
                 val        = corr_matrix.iloc[i, j]
-                text_color = "white" if abs(val) > 0.55 else PALETTE["text"]
                 ax.text(j, i, f"{val:.2f}", ha="center", va="center",
-                        color=text_color, fontsize=fs, fontweight="bold")
+                        color="black", fontsize=fs, fontweight="bold")
 
         ax.set_title(title, color=PALETTE["text"], fontsize=13,
                      fontweight="bold", pad=14)

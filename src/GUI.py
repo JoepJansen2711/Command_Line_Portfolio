@@ -72,10 +72,19 @@ h1, h2, h3 { color: #4C9BE8 !important; }
 /* Select / input */
 [data-baseweb="select"] > div  { background: #1A1D2E !important; border-color: #252839 !important; }
 [data-baseweb="select"] span   { color: #DCE0F0 !important; }
+[data-baseweb="select"] div[role="button"] { color: #DCE0F0 !important; }
 [data-baseweb="input"]  > div  { background: #1A1D2E !important; border-color: #252839 !important; }
 input, textarea { color: #DCE0F0 !important; background: #1A1D2E !important; }
 [role="option"] { color: #DCE0F0 !important; background: #1A1D2E !important; }
 label { color: #DCE0F0 !important; }
+
+/* Expander headers */
+[data-testid="stExpander"] details > summary { color: #DCE0F0 !important; }
+[data-testid="stExpander"] details > summary:hover { background: rgba(76, 155, 232, 0.1); }
+
+/* Multiselect tags/chips */
+[data-baseweb="tag"] { background: #4C9BE8 !important; color: #0F1117 !important; }
+[data-baseweb="tag"] span { color: #0F1117 !important; overflow: visible !important; white-space: nowrap !important; }
 
 /* Buttons */
 [data-testid="stFormSubmitButton"] button,
@@ -90,7 +99,7 @@ label { color: #DCE0F0 !important; }
 hr { border-color: #252839; }
 
 /* Caption / info */
-.stCaption, small { color: #8B8FA8 !important; }
+.stCaption, small { color: #DCE0F0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
