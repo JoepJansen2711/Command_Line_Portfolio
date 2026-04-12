@@ -1,9 +1,9 @@
-yfinance==1.2.1
-rich==14.3.3
-pytest==9.0.3
-pandas==3.0.2
-numpy==2.1.1
-matplotlib==3.9.0
-scipy==1.14.1
-arch==8.0.0
+yfinance>=1.2.1
+rich>=14.3.3
+pytest>=9.0.3
+pandas>=3.0.0
+numpy>=2.3.3,<2.4.0
+matplotlib>=3.9.0
+scipy>=1.14.0
+arch>=8.0.0
 streamlit>=1.56.0

@@ -14,16 +14,6 @@ Controller.py is unaffected — both can run independently.
 
 import os
 import sys
-
-# ── Allow `python src/GUI.py` (re-launch via streamlit) ───────────────────────
-if __name__ == "__main__":
-    import subprocess
-    subprocess.run(
-        [sys.executable, "-m", "streamlit", "run", __file__],
-        check=True,
-    )
-    sys.exit(0)
-
 import numpy as np
 import pandas as pd
 import streamlit as st
