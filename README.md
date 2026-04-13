@@ -75,7 +75,7 @@ Interactive menu driven by numbered input. All prompts include defaults; press E
 
 The dashboard is deployed and accessible at:
 
-**https://commandlineportfolio-gppadgsvxnfz52rsgiqkq9.streamlit.app/**
+**https://commandlineportfolio-k7ksnyxbywvbumcj7jm2wi.streamlit.app/**
 
 
 ## Testing
