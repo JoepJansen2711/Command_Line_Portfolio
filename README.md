@@ -6,12 +6,14 @@ A Python portfolio analytics tool with two interfaces: a terminal CLI and a Stre
 
 ## Features
 
+- **Adding and removing assets** — by giving a ticker as input, the quantity and the buying price
+-**Price history chart** — multiple assets can be plotted together in one chart
 - **Holdings overview** — live prices, P&L, transaction vs. current value
 - **Weight breakdown** — by asset, sector, or asset class
 - **Sharpe ratios** — per asset, sector, asset class, or portfolio level
 - **Correlation matrix** — Pearson heatmap across all positions
 - **Markowitz optimisation** — mean-variance optimal weights via SLSQP
-- **Optimal weights** - bar chart and table with mean-variance optimal weights
+- **Optimal weights** — bar chart and table with mean-variance optimal weights
 - **Efficient frontier** — risk/return frontier coloured by Sharpe ratio
 - **Monte Carlo simulation** — correlated GBM with Cholesky decomposition
 - **Benchmark comparison** — alpha, tracking error, cumulative return chart
